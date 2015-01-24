@@ -29,6 +29,10 @@ function Game() {
     this.islands = null;
     // List of all players in the game.
     this.players = null;
+	// List of all units.
+	this.units = [];
+	// List of all buildings.
+	this.buildings = [];
 }
 
 // Create a grid of islands.
@@ -72,14 +76,18 @@ Game.prototype.testInit = function() {
 	for (i = 0; i < this.islands.length; i++) {
 		var island = this.islands[i];
 		island.owner = randInt(-1, this.players.length);
-		island.unitCount = randInt(0, 6);
-		if (island.owner >= 0) {
-			island.buildingLevel = randInt(0, 6);
-		}
-		island.orders = ORDERS[randInt(0, ORDERS.length)];
-		do {
-			island.direction = DIRECTIONS[randInt(0, DIRECTIONS.length)];
-		} while (island.neighbors[island.direction] === null);
+        if (island.owner >= 0) {
+            var j, n;
+            n = randInt(0, 6);
+            for (j = 0; j < n; j++) {
+                island.units.push(new Unit());
+            }
+            n = randInt(0, 6);
+            for (j = 0; j < n; j++) {
+                island.buildings.push(new Building());
+            }
+    		island.giveRandomOrders();
+        }
 		island.defense = randInt(1, 100);
 		island.sinkCounter = randInt(1, 100);
 	}
@@ -95,6 +103,164 @@ Game.prototype.createPlayers = function(numPlayers) {
         this.players[i].cursor.island = this.islands[0];
 
     }
+}
+
+// Update unit movement and attacks.
+Game.prototype.updateMove = function() {
+	var i, j;
+	// Gather all of the movement orders.
+	var movement = [];
+	for (i = 0; i < this.islands.length; i++) {
+		var island = this.islands[i];
+		var move = {
+			owner0: island.owner,
+            owner1: island.owner,
+			target: -1,
+			sources: [],
+			force: island.units.length,
+			alone: false,
+			result: 'stand',
+            unit: null
+		};
+        console.log(island);
+		if (island.orders === 'move' && island.units.length > 0) {
+			move.target = island.neighbors[island.direction].index;
+			move.alone = (island.units.length === 1 &&
+						  island.buildings.length === 0);
+            move.result = null;
+            move.unit = island.units[island.units.length - 1];
+		}
+		movement.push(move);
+	}
+	for (i = 0; i < movement.length; i++) {
+		var move = movement[i];
+		if (move.target >= 0) {
+			movement[move.target].sources.push(i);
+		}
+	}
+    var forces = [];
+    for (i = 0; i < this.players.length; i++) {
+        forces.push(0);
+    }
+    console.log(movement);
+    // Loop until there is no more plain movement.
+    var didMove;
+    do {
+        didMove = false;
+        // Resolve ownership of unowned islands.
+        for (i = 0; i < movement.length; i++) {
+            var move = movement[i];
+            if (move.owner1 >= 0 || move.sources.length == 0) {
+                continue;
+            }
+            for (j = 0; j < forces.length; j++) {
+                forces[j] = 0;
+            }
+            var src = move.sources;
+            for (j = 0; j < src.length; j++) {
+                var smove = movement[src[j]];
+                forces[smove.owner0] += smove.force;
+            }
+            var winningForce = Math.max.apply(forces);
+            var whoWon = -1;
+            for (j = 0; j < forces.length; j++) {
+                if (forces[j] != winningForce) {
+                    break;
+                }
+                if (whoWon < 0) {
+                    whoWon = j;
+                } else {
+                    whoWon = -1;
+                    break;
+                }
+            }
+            move.owner1 = whoWon;
+        }
+    	// Resolve movement.
+        for (i = 0; i < movement.length; i++) {
+            var move = movement[i];
+            console.log('Move ' + i + ' ' + move.result)
+            if (move.result !== null) {
+                continue;
+            }
+            console.log('Unresolved move ' + i);
+            var tmove = movement[move.target];
+            if (move.owner0 == tmove.owner1) {
+                console.log('Same owner');
+                didMove = true;
+                move.result = 'move';
+            }
+        }
+        // Remove ownership from empty islands.
+        for (i = 0; i < movement.length; i++) {
+            var move = movement[i];
+            if (move.result == 'move' && move.alone) {
+                move.owner1 = -1;
+            }
+        }
+    } while (didMove);
+    // Reslove remaining actions.
+    for (i = 0; i < movement.length; i++) {
+        var move = movement[i];
+        if (move.result === null) {
+            var tmove = movement[move.target];
+            if (tmove.owner1 < 0) {
+                move.result = 'failmove';
+            } else {
+                move.result = 'attack';
+            }
+        }
+    }
+    // Make all units stand.
+    for (i = 0; i < movement.length; i++) {
+        var units = this.islands[i].units;
+        for (j = 0; j < units.length; j++) {
+            var unit = units[j];
+            unit.state = 'stand';
+            unit.relIsland = null;
+            unit.oldIndex = j;
+        }
+    }
+    // Apply movement and attacks to units.
+    for (i = 0; i < movement.length; i++) {
+        var move = movement[i];
+        if (move.result == 'stand') {
+            continue;
+        }
+        var island = this.islands[i];
+        var tisland = this.islands[move.target];
+        var units = island.units;
+        var unit = move.unit;
+        unit.state = move.result;
+        switch (move.result) {
+        case 'move':
+            for (j = 0; j < units.length; j++) {
+                if (units[j] === unit) {
+                    units.splice(j, 1);
+                    tisland.units.push(unit);
+                    break;
+                }
+            }
+            if (j == units.length) {
+                console.log('movement failed');
+                debugger;
+            }
+            unit.relIsland = island;
+            break;
+        case 'failmove':
+            unit.relIsland = tisland;
+            break;
+        case 'attack':
+            unit.relIsland = tisland;
+            break;
+        }
+    }
+}
+
+// Run one turn of the game.
+Game.prototype.update = function() {
+    console.log('update');
+    this.updateMove();
 }
 
 // Player class.
@@ -117,10 +283,10 @@ function Island(index, x, y) {
     this.location = [x, y];
     // The island's owner (0..N), or -1 if nobody owns it.
     this.owner = -1;
-    // The number of units (people) on this island.
-    this.unitCount = 0;
-    // The height of the buildings on this island (0..5).
-    this.buildingLevel = 0;
+    // The units on this island
+    this.units = [];
+    // The buildings on this island.
+    this.buildings = [];
     // The current orders for this island.
     this.orders = null;
 	// If orders are to move, which direction?
@@ -146,6 +312,58 @@ Island.prototype.connect = function(other, dir) {
     other.neighbors[dir2] = this;
 }
 
-Island.prototype.update = function() {
+Island.prototype.giveRandomOrders = function() {
+    if (this.owner < 0) {
+        this.orders = null;
+        this.direction = null;
+    } else {
+    	this.orders = ORDERS[randInt(0, ORDERS.length)];
+        if (this.orders == 'move') {
+    		do {
+    			this.direction = DIRECTIONS[randInt(0, DIRECTIONS.length)];
+    		} while (this.neighbors[this.direction] === null);
+        }
+    }
+}
 
+// Possible states for a unit.
+var UNIT_STATES = [
+	// Do nothing.
+	'stand',
+	// Move from unit.relIsland.
+	'move',
+	// Attack unit.relIsland.
+	'attack',
+	// Attempt to move to unit.relIsland, but fail.
+	'failmove',
+	// Appear on screen.
+	'recruit',
+	// Disappear.
+	'die'
+];
+
+// A unit.  Owned by an island.
+function Unit() {
+	// The unit's action this turn.
+	this.state = 'stand';
+	// The unit's target or source island.
+	this.relIsland = null;
+	// The slot index of the unit on the last turn.
+	this.oldIndex = 0;
+}
+
+// Possible states for a building.
+var BUILDING_STATES = [
+	// Do nothing.
+	'stand',
+	// Appear on the island.
+	'appear',
+	// Disappear.
+	'die'
+];
+
+// A building.  Tracks its state.
+function Building() {
+	// The building's state.
+	this.state = 'stand';
 }

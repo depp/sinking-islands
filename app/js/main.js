@@ -12,6 +12,12 @@ var gHandleId = 0;
 // Global graphics instance.
 var gGraphics = null;
 
+// Timestamp for the last turn.
+var gFrameTime = 0;
+
+// The number of milliseconds between turn.
+var TURN_TIME = 1000;
+
 var KEYS = {
     '40': 'down',
     '38': 'up',
@@ -57,8 +63,21 @@ function start() {
         return;
     }
     function runFrame(time) {
+        var delta;
+        if (gFrameTime == 0) {
+            gFrameTime = time;
+            delta = 0;
+        } else {
+            if (time >= gFrameTime + TURN_TIME) {
+                gFrameTime = Math.max(
+                    gFrameTime + TURN_TIME,
+                    time - TURN_TIME * 0.5);
+                gGame.update();
+            }
+            delta = time - gFrameTime;
+        }
         gHandleId = window.requestAnimationFrame(runFrame);
-        gGraphics.draw(time);
+        gGraphics.draw(delta / TURN_TIME);
     }
     window.requestAnimationFrame(runFrame);
 }

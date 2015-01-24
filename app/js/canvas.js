@@ -136,13 +136,14 @@ CanvasUI.prototype.drawGame = function(time, game) {
 		if (island.owner >= 0) {
 			var col = CANVAS_DATA.colors['p' + island.owner];
 			var j;
-			if (island.buildingLevel > 0) {
-				var bloc = CANVAS_DATA.building_loc[island.buildingLevel-1];
+			if (island.buildings.length > 0) {
+                var n = island.buildings.length;
+				var bloc = CANVAS_DATA.building_loc[n-1];
 				cxt.fillStyle = col.c2;
 				cxt.strokeStyle = col.c1;
 				cxt.lineWidth = 3.0;
 				cxt.beginPath();
-				for (j = 0; j < island.buildingLevel; j++) {
+				for (j = 0; j < n; j++) {
 					cxt.rect(
 						bloc[j][0] * (bw/2 + 2) - bw/2,
 						bloc[j][1] * (bh/2 + 2) - bh/2,
@@ -151,8 +152,8 @@ CanvasUI.prototype.drawGame = function(time, game) {
 				cxt.fill();
 				cxt.stroke();
 			}
-			if (island.unitCount > 0) {
-				var n = island.unitCount;
+			if (island.units.length > 0) {
+				var n = island.units.length;
 				cxt.fillStyle = col.c1;
 				cxt.beginPath();
 				for (j = 0; j < n; j++) {
